@@ -5,6 +5,8 @@ import { EntityManager, Repository } from 'typeorm';
 import { Item } from './entities/item.entity';
 import { Listing } from './entities/listing.entity';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Comment } from './entities/comment.entity';
+import { Tag } from './entities/tag.entity';
 
 @Injectable()
 export class ItemsService {
@@ -19,37 +21,43 @@ export class ItemsService {
       ...createItemDto.listing,
       rating: 0,
     });
-    const item = new Item({ ...createItemDto, listing });
+    const tags = createItemDto.tags.map(
+      (createTagDto) => new Tag(createTagDto),
+    );
+    const item = new Item({ ...createItemDto, comments: [], tags, listing });
     await this.entityManager.save(item);
   }
 
   async findAll() {
     return this.itemsRepository.find({
-      relations: { listing: true },
+      relations: { listing: true, comments: true, tags: true },
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: string) {
     return this.itemsRepository.findOne({
       where: { id },
-      relations: { listing: true },
+      relations: { listing: true, comments: true, tags: true },
     });
   }
 
-  async update(id: number, updateItemDto: UpdateItemDto) {
-    const item = await this.findOne(id);
-    if (item) {
-      const listing = new Listing({
-        ...updateItemDto.listing,
-        rating: 0,  
-      });
+  async update(id: string, updateItemDto: UpdateItemDto) {
+    await this.entityManager.transaction(async (entityManager) => {
+      const item = await this.itemsRepository.findOneBy({ id });
+      item.public = updateItemDto.public;
+      const comments = updateItemDto.comments.map(
+        (createCommentDto) => new Comment(createCommentDto),
+      );
+      item.comments = comments;
+      await entityManager.save(item);
 
-      const item = new Item({ ...updateItemDto, listing });
-      await this.entityManager.save(item);
-    }
+      const tagContent = `${Math.random()}`;
+      const tag = new Tag({ content: tagContent });
+      await entityManager.save(tag);
+    });
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     await this.itemsRepository.delete(id);
   }
 }
